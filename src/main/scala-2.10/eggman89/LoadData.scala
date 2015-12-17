@@ -1,28 +1,18 @@
 package eggman89
 
-import eggman89.genreReco.{doNaiveBayes, doDecisionTrees, doLogisticRegressionWithLBFGS, doRandomForest}
-import eggman89.hashmap
-import org.apache.spark.mllib.stat.Statistics._
+
+import org.apache.spark.ml.Pipeline
+import org.apache.spark.ml.classification._
+import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
 import org.apache.log4j.{Level, Logger}
-import org.apache.spark.mllib.evaluation.MulticlassMetrics
 import org.apache.spark.mllib.stat.{MultivariateStatisticalSummary, Statistics}
-import org.apache.spark.mllib.stat.test.KolmogorovSmirnovTestResult
 import org.apache.spark.{SparkConf, SparkContext}
-import org.apache.spark.mllib.classification.LogisticRegressionWithLBFGS
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.mllib.recommendation.{ALS, Rating}
-import org.apache.spark.mllib.regression.LabeledPoint
-import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.types._
 import org.apache.spark.sql.{DataFrame, SQLContext}
-import org.joda.time
-import org.joda.time.DateTime
+import org.apache.spark.ml.feature._
 
-/**
-  * Created by snehasis on 12/15/2015.
-  */
-
-class hashmapb  extends java.io.Serializable
+class hashmap  extends java.io.Serializable
 {
   var obj:Map[String,Int] = Map()
   var id = -1
@@ -30,13 +20,16 @@ class hashmapb  extends java.io.Serializable
 
     if (obj.contains(value) == true)
     {
-
+      if (value == "?")
+      {
+        return 0;
+      }
       obj(value)
     }
 
     else
-    {
-      id = id + 1
+    {      id = id + 1
+
       obj = obj +(value->id)
       id
     }
@@ -48,20 +41,18 @@ class hashmapb  extends java.io.Serializable
   }
 }
 
+
 object LoadData {
 
-  def main(args: Array[String])  {
+  def main(args: Array[String]) {
 
-    println("Select a Method to predict")
-    println("1: Random Forest; 2:Logistic Regression With LBFGS; 3:Decision Trees;  4:Naive Bayes 5:chiSqTest(other)")
-    val method = readInt()
 
     /*spark stuff*/
     Logger.getLogger("org").setLevel(Level.OFF)
     Logger.getLogger("akka").setLevel(Level.OFF)
     Logger.getLogger("INFO").setLevel(Level.OFF)
     System.setProperty("hadoop.home.dir", "c:/winutil/")
-    val conf = new SparkConf().setAppName("MusicReco").set("spark.serializer", "org.apache.spark.serializer.KryoSerializer").set("spark.executor.memory","4g").setMaster("local[*]")
+    val conf = new SparkConf().setAppName("MusicReco").set("spark.serializer", "org.apache.spark.serializer.KryoSerializer").set("spark.executor.memory", "4g").setMaster("local[*]")
     val sc = new SparkContext(conf)
 
     /*setting up sql context to query the data later on*/
@@ -72,24 +63,19 @@ object LoadData {
     Logger.getLogger("akka").setLevel(Level.OFF)
     Logger.getLogger("INFO").setLevel(Level.OFF)
 
-
-
-
-    /*create hash-tables for non numeric attributes*/
-
     val workclass_hm = new hashmap()
     val education_hm = new hashmap()
     val marital_status_hm = new hashmap()
     val occupation_hm = new hashmap()
     val relationship_hm = new hashmap()
     val race_hm = new hashmap()
-    val sex_hm = new hashmapb()
+    val sex_hm = new hashmap()
     val native_country_hm = new hashmap()
-    val sal_50k_hm = new hashmapb()
+
 
     //load data
 
-    val train_set = sc.textFile("dataset/adult_data.txt").map(_.split(",")).map(p=> LabeledPoint(p(14).drop(1).toString.toInt,
+    val train_set = sc.textFile("dataset/adult.data").map(_.split(",")).map(p=> (p(14),
 
       Vectors.dense((p(0).toDouble),workclass_hm.add(p(1)) ,
         p(2).toDouble,
@@ -100,64 +86,63 @@ object LoadData {
         occupation_hm.add(p(6)), relationship_hm.add(p(7)), race_hm.add(p(8)),  sex_hm.add(p(9)),
         p(10).toDouble, p(11).toDouble, p(12).toDouble,
         native_country_hm.add(p(13))
-      )))
+      ))).toDF("salary", "attributes")
 
-    val test_is_train = sc.textFile("dataset/adult_test.txt").map(_.split(",")).map(p=>( 2 ,
+    val test_set = sc.textFile("dataset/adult.test").map(_.split(",")).map(p=>( p(14),
       Vectors.dense((p(0).toDouble),workclass_hm.add(p(1)) ,
-       p(2).toDouble,
+        p(2).toDouble,
         education_hm.add((p(3))),
         p(4).toDouble,
         marital_status_hm.add(p(5)),
         occupation_hm.add(p(6)), relationship_hm.add(p(7)), race_hm.add(p(8)),  sex_hm.add(p(9)),
         p(10).toDouble, p(11).toDouble, p(12).toDouble,
         native_country_hm.add(p(13))
-      ).toDense,sal_50k_hm.add(p(14))
-      )
-    )
+      ).toDense))
+      .toDF("salary", "attributes")
 
-    var it : Int = 0;
+    val labelIndexer = new StringIndexer()
+      .setInputCol("salary")
+      .setOutputCol("indexedSalary")
+      .fit(train_set)
 
+    //labelIndexer.labels.foreach(println)
 
-    var predicted_res_RDD  : RDD[(Int, Int, Int)] = sc.emptyRDD
+    val featureIndexer = new VectorIndexer()
+      .setInputCol("attributes")
+      .setOutputCol("indexedAttributes")
+      .setMaxCategories(50) // features with > 4 distinct values are treated as continuous
+      .fit(train_set)
 
-    if (method == 1)
-    {
-      predicted_res_RDD = doRandomForest.test(doRandomForest.train(train_set,10,32,40),test_is_train)
+    val dt = new GBTClassifier().setMaxBins(46).setMaxDepth(20).setMaxMemoryInMB(4096)
+      .setLabelCol("indexedSalary")
+      .setFeaturesCol("indexedAttributes").setMaxIter(15)
 
+    // Convert indexed labels back to original labels.
+    val labelConverter = new IndexToString()
+      .setInputCol("prediction")
+      .setOutputCol("predictedSal")
+      .setLabels(labelIndexer.labels)
 
-    }
+    // Chain indexers and tree in a Pipeline
+    val pipeline = new Pipeline()
+      .setStages(Array(labelIndexer, featureIndexer, dt, labelConverter))
 
-    if(method ==2)
-    {
-      predicted_res_RDD = doLogisticRegressionWithLBFGS.test(doLogisticRegressionWithLBFGS.train(train_set),test_is_train)
-    }
+    // Train model.  This also runs the indexers.
+    val model = pipeline.fit(train_set)
 
-    if(method ==3)
-    {
-      predicted_res_RDD = doDecisionTrees.test(doDecisionTrees.train(train_set,29,32),test_is_train)
-    }
+    // Make predictions.
+    val predictions = model.transform(test_set)
+    val evaluator = new MulticlassClassificationEvaluator()
+      .setLabelCol("indexedSalary")
+      .setPredictionCol("prediction")
+      .setMetricName("precision")
 
-    if(method ==4)
-    {
-      predicted_res_RDD = doNaiveBayes.test(doNaiveBayes.train(train_set,1),test_is_train)
-    }
-    if(method ==5)
-    {
-     // chiSqTest.do_test(RDD_LP_trainset)
+    val accuracy = evaluator.evaluate(predictions)
+    println("Test Error = " + (1.0 - accuracy))
 
-    }
-
-   // predicted_res_RDD.foreach(println)
-    val predictionAndLabels : RDD[(Double,Double)] = predicted_res_RDD.toDF().map(l => (l(1).toString.toDouble,l(2).toString.toDouble))
-    val metrics = new MulticlassMetrics(predictionAndLabels)
-    val precision = metrics.precision
-    println(metrics.confusionMatrix.toString())
-    println("Precision = " + precision)
-    println("End: Prediction")
-
-  //  Statistics_.
+    //val treeModel = model.stages(2).asInstanceOf[RandomForestModel]
+  //  println("Learned classification tree model:\n" + treeModel.toDebugString)
 
 
   }
-
 }
