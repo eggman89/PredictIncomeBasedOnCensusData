@@ -18,7 +18,8 @@ object doDecisionTrees {
 
     val startTime =  new DateTime()
     val numClasses = 2
-    val categoricalFeaturesInfo = Map[Int, Int]()
+    val categoricalFeaturesInfo = Map[Int, Int](1->9,3->16,5->7,6->15,7->6,8->5,9->2)
+
     val impurity = "gini"
     val maxDepth = maxD
     val maxBins = maxB

@@ -6,7 +6,7 @@ package eggman89
 class hashmap  extends java.io.Serializable
 {
   var obj:Map[String,Int] = Map()
-  var id = 0
+  var id = -1
   def add(value:String): Int ={
 
     if (obj.contains(value) == true)
@@ -19,8 +19,8 @@ class hashmap  extends java.io.Serializable
     }
 
     else
-    {
-      id = id + 1
+    {      id = id + 1
+
       obj = obj +(value->id)
       id
     }

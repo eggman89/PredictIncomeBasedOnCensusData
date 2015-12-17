@@ -2,8 +2,11 @@ package eggman89
 
 import eggman89.genreReco.{doNaiveBayes, doDecisionTrees, doLogisticRegressionWithLBFGS, doRandomForest}
 import eggman89.hashmap
+import org.apache.spark.mllib.stat.Statistics._
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.mllib.evaluation.MulticlassMetrics
+import org.apache.spark.mllib.stat.{MultivariateStatisticalSummary, Statistics}
+import org.apache.spark.mllib.stat.test.KolmogorovSmirnovTestResult
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.mllib.classification.LogisticRegressionWithLBFGS
 import org.apache.spark.mllib.linalg.Vectors
@@ -86,43 +89,35 @@ object LoadData {
 
     //load data
 
-    val train_set = sc.textFile("dataset/adult_data.txt").map(_.split(",")).map(p=> LabeledPoint(sal_50k_hm.add(p(14)).toInt,
+    val train_set = sc.textFile("dataset/adult_data.txt").map(_.split(",")).map(p=> LabeledPoint(p(14).drop(1).toString.toInt,
 
       Vectors.dense((p(0).toDouble),workclass_hm.add(p(1)) ,
-        //p(2).toString.toDouble,
+        p(2).toDouble,
         education_hm.add((p(3))),
-        //
-        // p(4).toDouble,
+
+        p(4).toDouble,
         marital_status_hm.add(p(5)),
         occupation_hm.add(p(6)), relationship_hm.add(p(7)), race_hm.add(p(8)),  sex_hm.add(p(9)),
-       // p(10).toDouble, p(11).toDouble, p(12).toDouble,
+        p(10).toDouble, p(11).toDouble, p(12).toDouble,
         native_country_hm.add(p(13))
       )))
 
-    val test_is_train = sc.textFile("dataset/adult_data.txt").map(_.split(",")).map(p=>( 1 ,
+    val test_is_train = sc.textFile("dataset/adult_test.txt").map(_.split(",")).map(p=>( 2 ,
       Vectors.dense((p(0).toDouble),workclass_hm.add(p(1)) ,
-      //  p(2).toString.toDouble,
+       p(2).toDouble,
         education_hm.add((p(3))),
-       // p(4).toDouble,
+        p(4).toDouble,
         marital_status_hm.add(p(5)),
         occupation_hm.add(p(6)), relationship_hm.add(p(7)), race_hm.add(p(8)),  sex_hm.add(p(9)),
-       // p(10).toDouble, p(11).toDouble, p(12).toDouble,
+        p(10).toDouble, p(11).toDouble, p(12).toDouble,
         native_country_hm.add(p(13))
       ).toDense,sal_50k_hm.add(p(14))
       )
     )
-  //  train_set.distinct().foreach(println)
+
     var it : Int = 0;
-    val test_Set = sc.textFile("dataset/adult_test.txt").map(_.split(",")).map(p=>( 1 ,
-      Vectors.dense((p(0).toDouble),workclass_hm.add(p(1)) ,p(2).toString.toDouble,
-        education_hm.add((p(3))), p(4).toDouble, marital_status_hm.add(p(5)),
-        occupation_hm.add(p(6)), relationship_hm.add(p(7)), race_hm.add(p(8)),  sex_hm.add(p(9)),
-        p(10).toDouble, p(11).toDouble, p(12).toDouble, native_country_hm.add(p(13))
-      ).toDense,sal_50k_hm.add(p(14))
-    )
-    )
-    //train_set.coalesce(1).saveAsTextFile("train2.txt")
-    //test_Set.coalesce(1).saveAsTextFile("test2.txt")
+
+
     var predicted_res_RDD  : RDD[(Int, Int, Int)] = sc.emptyRDD
 
     if (method == 1)
@@ -134,17 +129,17 @@ object LoadData {
 
     if(method ==2)
     {
-      predicted_res_RDD = doLogisticRegressionWithLBFGS.test(doLogisticRegressionWithLBFGS.train(train_set),test_Set)
+      predicted_res_RDD = doLogisticRegressionWithLBFGS.test(doLogisticRegressionWithLBFGS.train(train_set),test_is_train)
     }
 
     if(method ==3)
     {
-      predicted_res_RDD = doDecisionTrees.test(doDecisionTrees.train(train_set,29,32),test_Set)
+      predicted_res_RDD = doDecisionTrees.test(doDecisionTrees.train(train_set,29,32),test_is_train)
     }
 
     if(method ==4)
     {
-      predicted_res_RDD = doNaiveBayes.test(doNaiveBayes.train(train_set,1),test_Set)
+      predicted_res_RDD = doNaiveBayes.test(doNaiveBayes.train(train_set,1),test_is_train)
     }
     if(method ==5)
     {
@@ -152,16 +147,15 @@ object LoadData {
 
     }
 
-
+   // predicted_res_RDD.foreach(println)
     val predictionAndLabels : RDD[(Double,Double)] = predicted_res_RDD.toDF().map(l => (l(1).toString.toDouble,l(2).toString.toDouble))
-    val metrics = new MulticlassMetrics(predictionAndLabels.coalesce(1))
+    val metrics = new MulticlassMetrics(predictionAndLabels)
     val precision = metrics.precision
-
+    println(metrics.confusionMatrix.toString())
     println("Precision = " + precision)
     println("End: Prediction")
 
-
-
+  //  Statistics_.
 
 
   }

@@ -19,12 +19,12 @@ object doRandomForest {
     val startTime =  new DateTime()
     println("Start: Training Random Forest with ", trainset.count(), " songs")
     val numClasses = 2
-    val categoricalFeaturesInfo = Map[Int, Int]()
-    val numTrees = 100 // Use more in practice.
+    val categoricalFeaturesInfo = Map[Int, Int](1->9,3->16,5->7,6->15,7->6,8->5,9->2)
+    val numTrees = 1 // Use more in practice.
   val featureSubsetStrategy = "auto" // Let the algorithm choose.
   val impurity = "gini"
-    val maxDepth = 28
-    val maxBins = 65
+    val maxDepth = 30
+    val maxBins = 32
 
 
     val model = RandomForest.trainClassifier(trainset, 2,categoricalFeaturesInfo,
