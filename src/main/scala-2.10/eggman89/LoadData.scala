@@ -6,6 +6,7 @@ import org.apache.spark.ml.classification._
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.mllib.stat.{MultivariateStatisticalSummary, Statistics}
+import org.apache.spark.mllib.tree.model.RandomForestModel
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.mllib.recommendation.{ALS, Rating}
@@ -110,12 +111,12 @@ object LoadData {
     val featureIndexer = new VectorIndexer()
       .setInputCol("attributes")
       .setOutputCol("indexedAttributes")
-      .setMaxCategories(50) // features with > 4 distinct values are treated as continuous
+      .setMaxCategories(10) // features with > 10 distinct values are treated as continuous
       .fit(train_set)
 
-    val dt = new GBTClassifier().setMaxBins(46).setMaxDepth(20).setMaxMemoryInMB(4096)
+    val rf = new RandomForestClassifier()
       .setLabelCol("indexedSalary")
-      .setFeaturesCol("indexedAttributes").setMaxIter(15)
+      .setFeaturesCol("indexedAttributes").setNumTrees(20).setMaxDepth(15)
 
     // Convert indexed labels back to original labels.
     val labelConverter = new IndexToString()
@@ -125,7 +126,7 @@ object LoadData {
 
     // Chain indexers and tree in a Pipeline
     val pipeline = new Pipeline()
-      .setStages(Array(labelIndexer, featureIndexer, dt, labelConverter))
+      .setStages(Array(labelIndexer, featureIndexer, rf, labelConverter))
 
     // Train model.  This also runs the indexers.
     val model = pipeline.fit(train_set)
@@ -140,8 +141,8 @@ object LoadData {
     val accuracy = evaluator.evaluate(predictions)
     println("Test Error = " + (1.0 - accuracy))
 
-    //val treeModel = model.stages(2).asInstanceOf[RandomForestModel]
-  //  println("Learned classification tree model:\n" + treeModel.toDebugString)
+   // val treeModel = model.stages(2).asInstanceOf[RandomForestClassificationModel]
+    //println("Learned classification tree model:\n" + treeModel.toDebugString)
 
 
   }
